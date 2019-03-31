@@ -1,86 +1,84 @@
 #include <iostream>
+#include <random>
 #include <pthread.h>
 #include <semaphore.h>
-#include <random>
 #include <unistd.h>
-
-#define PHILOSOPHERS 5
-#define LEFT (philosopher_num + 4) % PHILOSOPHERS
-#define RIGHT (philosopher_num + 1) % PHILOSOPHERS
 
 using namespace std;
 
-const int THINKING = 2;
-const int HUNGRY = 1;
-const int EATING = 0;
+// 3 states of Philosophers
+#define EATING 0
+#define HUNGRY 1
+#define THINKING 2
 
-int state[PHILOSOPHERS];
+#define PHILOSOPHERS_COUNT 5
 
-sem_t lock;
-sem_t S[PHILOSOPHERS];
+int state[PHILOSOPHERS_COUNT];
 
-void check(int philosopher_num);
-void take_chopstick(int philosopher_num);
-void put_chopstick(int philosopher_num);
-void *philospher(void *arg);
+// semaphores
+sem_t mutex;
+sem_t S_P[PHILOSOPHERS_COUNT];
+
+// To check whether forks are free to use for a given Philosopher and assigning state EATING id forks are free
+void check(int phil_id){
+  int left = (PHILOSOPHERS_COUNT + phil_id - 1)%PHILOSOPHERS_COUNT;
+  int right = (phil_id + 1)%PHILOSOPHERS_COUNT;
+  if (state[phil_id] == HUNGRY && state[left] != EATING && state[right] != EATING){
+      state[phil_id] = EATING;
+      sleep(rand()%4);
+      cout<<"Philosopher "<<(phil_id+1)<<" is Eating with forks "<<phil_id+1<<" & "<<right+1<<endl;
+      sem_post(&S_P[phil_id]);
+  }
+}
+
+// for picking forks
+void pickup_stick(int phil_id){
+    sem_wait(&mutex);
+    state[phil_id] = HUNGRY;
+    cout <<"Philosopher "<<(phil_id+1)<<":Hungry"<< endl;
+
+    check(phil_id);
+    sem_post(&mutex);
+    sem_wait(&S_P[phil_id]);
+    sleep(rand()%4);
+}
+
+// for putting down forks
+void put_down_stick(int phil_id){
+    sem_wait(&mutex);
+    state[phil_id] = THINKING;
+    int left = (PHILOSOPHERS_COUNT + phil_id - 1)%PHILOSOPHERS_COUNT;
+    int right = (phil_id + 1)%PHILOSOPHERS_COUNT;
+    cout <<"Philosopher "<<(phil_id+1)<<" puts down fork "<<phil_id+1<<" & "<<right+1<<endl;
+    cout <<"Philosopher "<<(phil_id+1)<< ": thinking"<<endl;
+
+    check(left);
+    check(right);
+    sem_post(&mutex);
+}
+
+void* philospher_init(void* arg){
+    while (1) {
+        int phil_id = *((int*)arg);
+        sleep(rand()%5);
+        pickup_stick(phil_id);
+        put_down_stick(phil_id);
+    }
+}
 
 int main(){
-    pthread_t philospher_thread[PHILOSOPHERS];
-    // initialize the semaphores
-    sem_init(&lock, 0, 1);
+    pthread_t philospher_thread[PHILOSOPHERS_COUNT];
+    sem_init(&mutex, 0, 1);
 
-    for(int i = 0; i < PHILOSOPHERS; i++)
-        sem_init(&S[i], 0, 0);
-    // create philosopher processes
-    for (int i = 0; i < PHILOSOPHERS; i++) {
-        pthread_create(&philospher_thread[i], NULL, philospher, (void *)(intptr_t)i);
-        cout << "Philosopher " << i+1 << "is thinking" << endl;
+    for(int i=0; i<PHILOSOPHERS_COUNT; i++) {
+      sem_init(&S_P[i], 0, 0);
+    }
+
+    for (int i=0; i<PHILOSOPHERS_COUNT; i++) {
+      // initializaing all philosophers with thinking state
+      int p_i = i;
+      pthread_create(&philospher_thread[i], NULL, philospher_init, &p_i);
+      cout<<"Philosopher "<<p_i+1<<": thinking\n";
     }
     pthread_exit(NULL);
-}
-
-void check(int philosopher_num){
-    if (state[philosopher_num] == HUNGRY && state[LEFT] != EATING && state[RIGHT] != EATING){
-        // state that eating
-        state[philosopher_num] = EATING;
-        sleep(rand()%4);
-        cout << "Philosopher " << philosopher_num+1 << " takes fork " << LEFT+1 << " and " << philosopher_num+1 << endl;
-        cout << "Philosopher " << philosopher_num+1 << " is Eating" << endl;
-        sem_post(&S[philosopher_num]);
-    }
-}
-
-// take up chopsticks
-void take_chopstick(int philosopher_num){
-    sem_wait(&lock);
-    // state that hungry
-    state[philosopher_num] = HUNGRY;
-    cout << "Philosopher " << philosopher_num+1 << " is Hungry" << endl;
-    // eat if neighbours are not eating
-    check(philosopher_num);
-    sem_post(&lock);
-    // if unable to eat wait to be signalled
-    sem_wait(&S[philosopher_num]);
-    sleep(rand()%3);
-}
-
-// put down chopsticks
-void put_chopstick(int philosopher_num){
-    sem_wait(&lock);
-    // state that thinking
-    state[philosopher_num] = THINKING;
-    cout << "Philosopher " << philosopher_num+1 << " putting fork " << LEFT+1 << " and " << philosopher_num+1 <<  " down" << endl;
-    cout << "Philosopher " << philosopher_num+1 << "is thinking" << endl;
-    check(LEFT);
-    check(RIGHT);
-    sem_post(&lock);
-}
-
-void* philospher(void* arg){
-    while (true) {
-        int philosopher_num = ((intptr_t)arg);
-        sleep(rand()%2);
-        take_chopstick(philosopher_num);
-        put_chopstick(philosopher_num);
-    }
 }
