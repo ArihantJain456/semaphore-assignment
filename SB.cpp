@@ -1,7 +1,7 @@
 #include <iostream>
 #include <pthread.h>
 #include <semaphore.h>
-#include <unistd.h>
+#include <unistd.h> 
 using namespace std;
 
 #define SEATS 20
